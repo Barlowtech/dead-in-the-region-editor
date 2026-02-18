@@ -1,16 +1,57 @@
 import streamlit as st
-import sys
+import json
 import os
-
-# Add parent directory to path so we can import helpers
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from helpers import load_speakers, save_speakers
 
 st.set_page_config(
     page_title="Dead in the Region — Speaker Profiles",
     page_icon="🎙️",
     layout="wide",
 )
+
+# ---------------------------------------------------------------------------
+# Data helpers (inline to avoid import issues on Streamlit Cloud)
+# ---------------------------------------------------------------------------
+DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
+
+
+def _get_github_repo():
+    try:
+        from github import Github
+        token = st.secrets["github"]["token"]
+        repo_name = st.secrets["github"]["repo"]
+        g = Github(token)
+        return g.get_repo(repo_name)
+    except Exception:
+        return None
+
+
+def load_speakers():
+    path = os.path.join(DATA_DIR, "speakers.json")
+    if os.path.exists(path):
+        with open(path, "r") as f:
+            return json.load(f)
+    return {"speakers": []}
+
+
+def save_speakers(data):
+    path = os.path.join(DATA_DIR, "speakers.json")
+    content = json.dumps(data, indent=2)
+    with open(path, "w") as f:
+        f.write(content)
+    # Commit to GitHub
+    repo = _get_github_repo()
+    if repo is None:
+        return False, "GitHub not configured."
+    try:
+        try:
+            existing = repo.get_contents("data/speakers.json")
+            repo.update_file("data/speakers.json", "Update speaker profiles", content, existing.sha)
+        except Exception:
+            repo.create_file("data/speakers.json", "Update speaker profiles", content)
+        return True, "Committed to GitHub."
+    except Exception as e:
+        return False, str(e)
+
 
 # ---------------------------------------------------------------------------
 # Load data
@@ -100,7 +141,6 @@ new_bio = st.text_area(
     label_visibility="collapsed",
 )
 
-# Word count
 bio_words = len(new_bio.split()) if new_bio.strip() else 0
 st.caption(f"{bio_words} words")
 

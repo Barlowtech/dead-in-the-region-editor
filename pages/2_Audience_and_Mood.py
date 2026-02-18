@@ -1,16 +1,56 @@
 import streamlit as st
-import sys
+import json
 import os
-
-# Add parent directory to path so we can import helpers
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from helpers import load_audience, save_audience
 
 st.set_page_config(
     page_title="Dead in the Region — Audience & Mood",
     page_icon="👥",
     layout="wide",
 )
+
+# ---------------------------------------------------------------------------
+# Data helpers (inline to avoid import issues on Streamlit Cloud)
+# ---------------------------------------------------------------------------
+DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
+
+
+def _get_github_repo():
+    try:
+        from github import Github
+        token = st.secrets["github"]["token"]
+        repo_name = st.secrets["github"]["repo"]
+        g = Github(token)
+        return g.get_repo(repo_name)
+    except Exception:
+        return None
+
+
+def load_audience():
+    path = os.path.join(DATA_DIR, "audience.json")
+    if os.path.exists(path):
+        with open(path, "r") as f:
+            return json.load(f)
+    return {"audience": {}}
+
+
+def save_audience(data):
+    path = os.path.join(DATA_DIR, "audience.json")
+    content = json.dumps(data, indent=2)
+    with open(path, "w") as f:
+        f.write(content)
+    repo = _get_github_repo()
+    if repo is None:
+        return False, "GitHub not configured."
+    try:
+        try:
+            existing = repo.get_contents("data/audience.json")
+            repo.update_file("data/audience.json", "Update audience & mood settings", content, existing.sha)
+        except Exception:
+            repo.create_file("data/audience.json", "Update audience & mood settings", content)
+        return True, "Committed to GitHub."
+    except Exception as e:
+        return False, str(e)
+
 
 # ---------------------------------------------------------------------------
 # Load data
