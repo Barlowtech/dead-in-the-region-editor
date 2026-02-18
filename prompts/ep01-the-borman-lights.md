@@ -7,7 +7,7 @@ SPEAKERS: 2
 ---
 
 COLD OPEN (0:00–0:45):
-Sound of highway traffic at night — semis passing — then silence between trucks. Carmen's voice: 'His car was still running. Door open. Radio on. And that's it. That's all there was.' Nate: 'That can't be all there was.' Carmen: 'That's what I said.'
+Carmen's voice: 'His car was still running. Door open. Radio on. And that's it. That's all there was.' Nate: 'That can't be all there was.' Carmen: 'That's what I said.'
 
 ---
 
@@ -40,7 +40,7 @@ Starts casual and playful (hosts establishing rapport) → builds curiosity thro
 ---
 
 HORROR/ATMOSPHERE BEATS:
-The silence between passing trucks on the Borman at 2 AM. The image of a car running with the door open and no one around. The radio tuned to static. The industrial corridor at night — refineries burning off gas creating orange light against low clouds. Carmen describes the stretch of highway where it happened and it sounds like a liminal space.
+Carmen describes the Borman at 2 AM — the emptiness between trucks, the way the industrial corridor looks at night with refineries burning off gas creating orange light against low clouds. The image of a car running with the door open and no one around. The radio tuned to static. She describes the stretch of highway where it happened and it sounds like a liminal space — the kind of place that feels wrong even in daylight.
 
 ---
 
