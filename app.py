@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import os
 import io
+import re
 from datetime import datetime
 
 # ---------------------------------------------------------------------------
@@ -14,6 +15,7 @@ st.set_page_config(
 )
 
 DATA_PATH = os.path.join(os.path.dirname(__file__), "data", "episodes.csv")
+PROMPTS_DIR = os.path.join(os.path.dirname(__file__), "prompts")
 
 # Structured field options
 TYPE_OPTIONS = [
@@ -89,6 +91,183 @@ def commit_to_github(df: pd.DataFrame):
         return False, f"GitHub push failed: {e}"
 
 
+def commit_prompt_to_github(filename: str, content: str):
+    """Push a single prompt file to the GitHub repo."""
+    try:
+        from github import Github
+
+        token = st.secrets["github"]["token"]
+        repo_name = st.secrets["github"]["repo"]
+        branch = st.secrets["github"].get("branch", "main")
+
+        g = Github(token)
+        repo = g.get_repo(repo_name)
+        file_path = f"prompts/{filename}"
+
+        try:
+            existing = repo.get_contents(file_path, ref=branch)
+            repo.update_file(
+                path=file_path,
+                message=f"Update prompt: {filename} — {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+                content=content,
+                sha=existing.sha,
+                branch=branch,
+            )
+        except Exception:
+            repo.create_file(
+                path=file_path,
+                message=f"Add prompt: {filename} — {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+                content=content,
+                branch=branch,
+            )
+        return True, f"Prompt committed to GitHub: prompts/{filename}"
+    except ImportError:
+        return False, "PyGithub not installed — saved locally only."
+    except KeyError:
+        return False, "GitHub secrets not configured — saved locally only."
+    except Exception as e:
+        return False, f"GitHub push failed: {e}"
+
+
+# ---------------------------------------------------------------------------
+# Prompt generation
+# ---------------------------------------------------------------------------
+
+def slugify(text: str) -> str:
+    """Convert a title to a filename-safe slug."""
+    text = text.lower().strip()
+    text = re.sub(r'[^\w\s-]', '', text)
+    text = re.sub(r'[\s_]+', '-', text)
+    text = re.sub(r'-+', '-', text)
+    return text.strip('-')
+
+
+def generate_prompt_text(row: pd.Series) -> str:
+    """Generate a Speechify-ready prompt from a CSV row."""
+    ep_num = row.get("Episode", "")
+    title = row.get("Title", "")
+    ep_type = row.get("Type", "")
+    fmt = row.get("Format", "")
+    told_by = row.get("Told By", "")
+    speakers = row.get("Speakers", "2")
+    guest = row.get("Guest", "None")
+    synopsis = row.get("Synopsis", "")
+    case_hook = row.get("Case Hook", "")
+    cold_open = row.get("Cold Open Concept", "")
+    source_attr = row.get("Story Source Attribution", "")
+    dynamic_story = row.get("Host Dynamic - Story Related", "")
+    dynamic_personal = row.get("Host Dynamic - Personal Moments", "")
+    humor = row.get("Humor Beats", "")
+    horror = row.get("Horror Beats", "")
+    foundry = row.get("Foundry Connection", "")
+    arc_role = row.get("Season Arc Role", "")
+    callbacks = row.get("Callbacks to Previous Episodes", "")
+    tease = row.get("Next Episode Tease", "")
+    tone_arc = row.get("Tone Arc", "")
+    notes = row.get("Special Production Notes", "")
+
+    # Build the hosts line
+    hosts_line = "Nate Alderman (narrator/researcher) and Carmen Reyes (reactor/comedian)"
+    if guest and guest != "None":
+        hosts_line += f" + {guest}"
+
+    # Build the host dynamics section
+    dynamics_parts = []
+    if told_by:
+        dynamics_parts.append(f"PRIMARY STORYTELLER: {told_by}")
+    if dynamic_story:
+        dynamics_parts.append(f"\n{dynamic_story}")
+    if dynamic_personal:
+        dynamics_parts.append(f"\nPERSONAL MOMENTS (non-case interactions):\n{dynamic_personal}")
+    if source_attr:
+        dynamics_parts.append(f"\nSOURCE ATTRIBUTION:\n{source_attr}")
+    host_dynamics_block = "\n".join(dynamics_parts)
+
+    # Build serialization notes
+    serial_parts = []
+    if foundry:
+        serial_parts.append(f"FOUNDRY CONNECTION: {foundry}")
+    if arc_role:
+        serial_parts.append(f"SEASON ARC ROLE: {arc_role}")
+    if callbacks:
+        serial_parts.append(f"CALLBACKS: {callbacks}")
+    serialization_block = "\n\n".join(serial_parts)
+
+    # Assemble the full prompt
+    prompt = f"""PODCAST: Dead in the Region — Episode {ep_num}: "{title}"
+FORMAT: {fmt}
+TYPE: {ep_type}
+HOSTS: {hosts_line}
+SPEAKERS: {speakers}
+
+---
+
+COLD OPEN (0:00–0:45):
+{cold_open}
+
+---
+
+THE CASE:
+[Type: {ep_type}]
+
+{synopsis}
+
+CASE HOOK (the single most compelling detail):
+{case_hook}
+
+---
+
+HOST DYNAMICS FOR THIS EPISODE:
+{host_dynamics_block}
+
+---
+
+TONAL MAP:
+{tone_arc}
+
+---
+
+HORROR/ATMOSPHERE BEATS:
+{horror}
+
+---
+
+DARK HUMOR BEATS:
+{humor}
+
+---
+
+SERIALIZATION NOTES:
+{serialization_block}
+
+---
+
+NEXT EPISODE TEASE:
+{tease}
+
+---
+
+PRODUCTION NOTES:
+{notes}"""
+
+    return prompt
+
+
+def generate_prompt_filename(row: pd.Series) -> str:
+    """Generate a consistent filename for a prompt file."""
+    ep_num = str(row.get("Episode", "0")).zfill(2)
+    title = row.get("Title", "untitled")
+    return f"ep{ep_num}-{slugify(title)}.md"
+
+
+def save_prompt_local(filename: str, content: str):
+    """Save a prompt file to the local prompts/ directory."""
+    os.makedirs(PROMPTS_DIR, exist_ok=True)
+    filepath = os.path.join(PROMPTS_DIR, filename)
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(content)
+
+
 # ---------------------------------------------------------------------------
 # Load data into session state
 # ---------------------------------------------------------------------------
@@ -129,6 +308,25 @@ with st.sidebar:
         ):
             st.session_state.selected_ep = idx
             st.rerun()
+
+    st.divider()
+
+    # ── Prompt generation (all episodes) ──
+    if st.button("⚡ Generate All Prompts", use_container_width=True):
+        results = []
+        for i, r in df.iterrows():
+            prompt_text = generate_prompt_text(r)
+            fname = generate_prompt_filename(r)
+            save_prompt_local(fname, prompt_text)
+            ok, msg = commit_prompt_to_github(fname, prompt_text)
+            results.append((fname, ok, msg))
+
+        successes = sum(1 for _, ok, _ in results if ok)
+        st.success(f"✅ Generated {successes}/{len(results)} prompts and committed to GitHub.")
+        if successes < len(results):
+            for fname, ok, msg in results:
+                if not ok:
+                    st.warning(f"⚠️ {fname}: {msg}")
 
     st.divider()
 
@@ -328,11 +526,14 @@ new_notes = st.text_area(
 
 st.divider()
 
-# ── Save ───────────────────────────────────────────────────────────────────
-col_save, col_status = st.columns([1, 3])
+# ── Save & Generate ───────────────────────────────────────────────────────
+col_save, col_gen, col_status = st.columns([1, 1, 2])
 
 with col_save:
     save_clicked = st.button("💾 Save Episode", type="primary", use_container_width=True)
+
+with col_gen:
+    gen_clicked = st.button("⚡ Generate Prompt", use_container_width=True)
 
 if save_clicked:
     # Update the dataframe
@@ -379,3 +580,24 @@ if save_clicked:
 
     # Clear the cached data so next load picks up changes
     load_csv.clear()
+
+if gen_clicked:
+    # Generate prompt from current row data (uses saved data, not form state)
+    prompt_text = generate_prompt_text(row)
+    fname = generate_prompt_filename(row)
+
+    # Save locally
+    save_prompt_local(fname, prompt_text)
+
+    # Commit to GitHub
+    gh_ok, gh_msg = commit_prompt_to_github(fname, prompt_text)
+
+    with col_status:
+        if gh_ok:
+            st.success(f"⚡ Prompt generated & committed! `prompts/{fname}`")
+        else:
+            st.info(f"⚡ Prompt saved locally. {gh_msg}")
+
+    # Show the generated prompt in an expander
+    with st.expander(f"📄 Generated Prompt — {fname}", expanded=True):
+        st.code(prompt_text, language="markdown")
