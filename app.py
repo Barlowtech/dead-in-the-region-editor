@@ -9,7 +9,7 @@ from datetime import datetime
 # Configuration
 # ---------------------------------------------------------------------------
 st.set_page_config(
-    page_title="Dead in the Region — Episode Editor",
+    page_title="Dead in the Region — Production Hub",
     page_icon="🔪",
     layout="wide",
 )
